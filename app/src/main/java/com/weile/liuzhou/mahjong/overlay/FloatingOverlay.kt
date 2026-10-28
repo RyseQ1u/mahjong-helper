@@ -1,14 +1,16 @@
 package com.weile.liuzhou.mahjong.overlay
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
@@ -40,10 +42,11 @@ class FloatingOverlay(
     private var cardParams: WindowManager.LayoutParams? = null
     private var collapsedParams: WindowManager.LayoutParams? = null
 
-    private var paused = false
+    private var isPaused = false
     private var currentStatus: String = "就绪"
 
     private companion object {
+        const val TAG = "FloatingOverlay"
         const val NORMAL_COLOR = 0xFFFFFFFF.toInt()
         const val WARNING_COLOR = 0xFFFFCC80.toInt()
     }
@@ -60,6 +63,11 @@ class FloatingOverlay(
     override val isShown: Boolean
         get() = cardView != null || collapsedView != null
 
+    // 悬浮窗的父容器是 WindowManager，没有可用的 ViewGroup 作 parent，
+    // 因此传 null 是此场景的正确用法（lint InflateParams 在此为误报）。
+    // dragImpl 在 ACTION_UP 未发生位移时调用 performClick，满足无障碍要求；
+    // lint 无法跨辅助函数追踪，故在此抑制（ClickableViewAccessibility）。
+    @SuppressLint("InflateParams", "ClickableViewAccessibility")
     override fun show(initialStatus: String) {
         onMain {
             if (cardView != null) {
@@ -79,8 +87,8 @@ class FloatingOverlay(
             val dragHandle = root.findViewById<View>(R.id.drag_handle)
 
             btnPause.setOnClickListener {
-                paused = !paused
-                btnPause.text = if (paused) "继续" else "暂停"
+                isPaused = !isPaused
+                btnPause.text = if (isPaused) "继续" else "暂停"
                 callbacks.onTogglePause()
             }
             btnCollapse.setOnClickListener { collapse() }
@@ -98,30 +106,44 @@ class FloatingOverlay(
         }
     }
 
-    override fun setPaused(p: Boolean) {
-        paused = p
+    override fun setPaused(paused: Boolean) {
+        isPaused = paused
         onMain {
-            cardView?.findViewById<Button>(R.id.btn_pause)?.text = if (p) "继续" else "暂停"
+            cardView?.findViewById<Button>(R.id.btn_pause)?.text =
+                if (paused) "继续" else "暂停"
         }
     }
 
     /**
-     * 显示/隐藏（保留 view 与参数，直接 remove/add 同一个 view）。
-     * 用于采集分析期间的自掩码：隐藏期间不销毁窗口，恢复无闪烁重建。
+     * 显示/隐藏，用于采集分析期间的自掩码。
+     *
+     * **只调整窗口 alpha 与触摸标志，不 add/remove 窗口**：
+     * 原先用 `removeView`/`addView` 实现，每轮分析（默认 500ms）都要把窗口
+     * 从 WindowManager 摘下再挂回，真机上表现为悬浮窗持续闪烁。
+     * alpha=0 的窗口图层对 MediaProjection 是透明合成，截图同样能取到干净的牌面，
+     * 因此功能等价但无窗口树抖动。
+     *
+     * 隐藏期间关闭触摸：alpha=0 的窗口仍会拦截点击，会让用户的点击落空。
      */
     override fun setVisible(visible: Boolean) {
         onMain {
             val view = cardView ?: collapsedView ?: return@onMain
             val params = cardParams ?: collapsedParams ?: return@onMain
-            if (visible) {
-                if (view.parent == null) {
-                    runCatching { windowManager.addView(view, params) }
-                }
+            // 不在窗口树中（尚未显示或已 dismiss）时不做任何事，避免自掩码把已关闭的窗口重新挂上。
+            if (view.parent == null) return@onMain
+
+            val targetAlpha = if (visible) 1f else 0f
+            val targetFlags = if (visible) {
+                params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
             } else {
-                if (view.parent != null) {
-                    runCatching { windowManager.removeView(view) }
-                }
+                params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
             }
+            if (params.alpha == targetAlpha && params.flags == targetFlags) return@onMain
+
+            params.alpha = targetAlpha
+            params.flags = targetFlags
+            runCatching { windowManager.updateViewLayout(view, params) }
+                .onFailure { Log.w(TAG, "setVisible($visible) failed: ${it.message}") }
         }
     }
 
@@ -129,7 +151,11 @@ class FloatingOverlay(
     fun updateAdvice(advice: com.weile.liuzhou.mahjong.domain.analysis.Advice) {
         onMain {
             val tv = cardView?.findViewById<TextView>(R.id.advice_text) ?: return@onMain
-            tv.text = renderAdvice(advice)
+            val rendered = renderAdvice(advice)
+            // 内容未变时不重绘：WRAP_CONTENT 窗口会随文本行数变化而重排，
+            // 无变化却重设文本会让悬浮窗持续跳动。
+            if (tv.text.toString() == rendered) return@onMain
+            tv.text = rendered
             tv.setTextColor(
                 if (advice.waitingConfirmation) WARNING_COLOR else NORMAL_COLOR
             )
@@ -159,6 +185,7 @@ class FloatingOverlay(
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun collapse() {
         onMain {
             val root = cardView ?: return@onMain
@@ -189,16 +216,11 @@ class FloatingOverlay(
     }
 
     private fun makeParams(): WindowManager.LayoutParams {
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
+        // minSdk 29：TYPE_APPLICATION_OVERLAY 必然可用，TYPE_PHONE 分支已是死代码。
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            type,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT,
         ).apply {
@@ -212,6 +234,8 @@ class FloatingOverlay(
     private var dragStartRawY = 0f
     private var dragStartParamX = 0
     private var dragStartParamY = 0
+    private var dragMoved = false
+    private val touchSlop by lazy { ViewConfiguration.get(context).scaledTouchSlop }
 
     private fun dragImpl(v: View, event: MotionEvent, p: WindowManager.LayoutParams): Boolean {
         when (event.action) {
@@ -220,11 +244,24 @@ class FloatingOverlay(
                 dragStartRawY = event.rawY
                 dragStartParamX = p.x
                 dragStartParamY = p.y
+                dragMoved = false
             }
             MotionEvent.ACTION_MOVE -> {
-                p.x = dragStartParamX + (event.rawX - dragStartRawX).toInt()
-                p.y = dragStartParamY + (event.rawY - dragStartRawY).toInt()
+                val dx = event.rawX - dragStartRawX
+                val dy = event.rawY - dragStartRawY
+                if (!dragMoved &&
+                    (kotlin.math.abs(dx) > touchSlop || kotlin.math.abs(dy) > touchSlop)
+                ) {
+                    dragMoved = true
+                }
+                p.x = dragStartParamX + dx.toInt()
+                p.y = dragStartParamY + dy.toInt()
                 onMain { windowManager.updateViewLayout(v, p) }
+            }
+            MotionEvent.ACTION_UP -> {
+                // 无障碍：拖动结束时若没有实际位移，按一次点击处理。
+                // 否则 TalkBack / 无障碍服务无法触发折叠圆点的展开（lint: ClickableViewAccessibility）。
+                if (!dragMoved) v.performClick()
             }
         }
         return true

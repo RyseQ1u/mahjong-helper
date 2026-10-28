@@ -15,7 +15,10 @@ object FrameSaver {
     private const val TAG = "FrameSaver"
     private const val DEBUG_SUBDIR = "debug/frames"
 
-    /** 保存一帧，返回文件路径；调用方需保证 bitmap 不为 null。 */
+    /** 调试帧保留上限。仅在用户主动保存时产生，但仍需防止长期使用后无限增长占满存储。 */
+    private const val MAX_KEPT_FRAMES = 20
+
+    /** 保存一帧，返回文件路径；调用方需保证 bitmap 不为 null。应在 IO 线程调用。 */
     fun saveFrame(context: Context, bitmap: Bitmap, tag: String = "frame"): String {
         val dir = File(context.filesDir, DEBUG_SUBDIR)
         if (!dir.exists()) dir.mkdirs()
@@ -24,8 +27,18 @@ object FrameSaver {
         file.outputStream().use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
+        pruneOldFrames(dir)
         Log.i(TAG, "saved frame -> ${file.absolutePath} (${bitmap.width}x${bitmap.height})")
         return file.absolutePath
+    }
+
+    /** 只保留最近 [MAX_KEPT_FRAMES] 帧，删除更早的调试截图。 */
+    private fun pruneOldFrames(dir: File) {
+        val frames = dir.listFiles { f -> f.extension == "png" } ?: return
+        if (frames.size <= MAX_KEPT_FRAMES) return
+        frames.sortedByDescending { it.lastModified() }
+            .drop(MAX_KEPT_FRAMES)
+            .forEach { old -> runCatching { old.delete() } }
     }
 
     /** 列出已保存的调试帧（供导出/查看）。 */

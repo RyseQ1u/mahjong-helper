@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import com.weile.liuzhou.mahjong.analysis.AnalysisSettings
 import com.weile.liuzhou.mahjong.capture.CaptureStatus
 import com.weile.liuzhou.mahjong.domain.analysis.AnalysisMode
+import com.weile.liuzhou.mahjong.ui.viewmodel.UiHint
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,12 +39,15 @@ fun MainScreen(
     overlayPermission: Boolean,
     canCapture: Boolean,
     settings: AnalysisSettings,
+    hint: UiHint?,
     onRequestCapture: () -> Unit,
     onStopCapture: () -> Unit,
     onSaveFrame: () -> Unit,
     onRequestOverlayPermission: () -> Unit,
     onSettingsChange: (AnalysisSettings) -> Unit,
     onResetRound: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
+    onDismissHint: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -61,6 +67,13 @@ fun MainScreen(
                         "识别不确定时会显示「等待确认」；置信度仅表示牌面识别质量，不是胜率。",
                 style = MaterialTheme.typography.bodyMedium,
             )
+            hint?.let { h ->
+                HintCard(
+                    hint = h,
+                    onOpenNotificationSettings = onOpenNotificationSettings,
+                    onDismiss = onDismissHint,
+                )
+            }
             StatusCard(status)
 
             Button(onClick = onRequestCapture, modifier = Modifier.fillMaxWidth()) {
@@ -187,13 +200,39 @@ private fun SettingsCard(
 }
 
 @Composable
+private fun HintCard(
+    hint: UiHint,
+    onOpenNotificationSettings: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                hint.text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (hint.offerNotificationSettings) {
+                    Button(onClick = onOpenNotificationSettings) { Text("去通知设置") }
+                }
+                TextButton(onClick = onDismiss) { Text("知道了") }
+            }
+        }
+    }
+}
+
+@Composable
 private fun StatusCard(status: CaptureStatus) {
     val text = when (status) {
         CaptureStatus.Idle -> "空闲"
         CaptureStatus.RequestingPermission -> "等待授权…"
         CaptureStatus.Starting -> "正在初始化采集…"
         is CaptureStatus.Capturing ->
-            "采集中：帧=${status.frameCount}，FPS=${String.format("%.1f", status.fps)}"
+            "采集中：帧=${status.frameCount}，FPS=${String.format(Locale.US, "%.1f", status.fps)}"
         CaptureStatus.Paused -> "已暂停"
         is CaptureStatus.Stopped -> "已停止：${status.reason}"
         is CaptureStatus.Error -> "错误：${status.message}"

@@ -75,6 +75,14 @@ class AnalysisPipeline(
     private var skipFramesRemaining = 0
     private var roundStartedAtMs = 0L
 
+    /**
+     * 悬浮窗恢复可见的时刻。用于限制掩码频率：
+     * 掩码会让悬浮窗从屏幕上消失，若每轮分析（默认 500ms）都执行一次，
+     * 用户看到的就是悬浮窗持续闪烁。恢复后至少保持 [MIN_OVERLAY_VISIBLE_MS] 可见。
+     */
+    @Volatile
+    private var lastUnmaskAtMs = 0L
+
     /** 由采集服务在每帧处理后调用（image handler 线程）。 */
     fun onFrame(bitmap: Bitmap) {
         // 掩码后的丢帧窗口：这些帧仍可能含悬浮窗，直接丢弃
@@ -87,6 +95,9 @@ class AnalysisPipeline(
         }
         val now = System.currentTimeMillis()
         if (now - lastAnalysisAtMs < settings.analysisIntervalMs) return
+        // 悬浮窗尚未恢复足够长的可见时间：跳过本轮，沿用上一次建议。
+        // 代价是一次建议最多延后约 1 秒，远小于悬浮窗高频闪烁对可用性的影响。
+        if (now - lastUnmaskAtMs < MIN_OVERLAY_VISIBLE_MS) return
 
         // 进入掩码：隐藏悬浮窗 → 丢 framesToSkipAfterMask 帧 → 下一帧必干净
         lastAnalysisAtMs = now
@@ -128,6 +139,7 @@ class AnalysisPipeline(
                 )
             }
         } finally {
+            lastUnmaskAtMs = System.currentTimeMillis()
             postMain { onMaskChanged?.invoke(false) }
         }
     }
@@ -156,6 +168,13 @@ class AnalysisPipeline(
 
     private companion object {
         const val TAG = "AnalysisPipeline"
+
+        /**
+         * 悬浮窗在一次自掩码后必须保持可见的最短时长（毫秒）。
+         * 掩码 = 悬浮窗消失；该值决定用户能连续看到的窗口时长，
+         * 取 900ms 时实际分析周期约 1 秒，肉眼不再产生闪烁感。
+         */
+        const val MIN_OVERLAY_VISIBLE_MS = 900L
     }
 }
 

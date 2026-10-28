@@ -1,6 +1,7 @@
 package com.weile.liuzhou.mahjong.domain.vision
 
 import android.graphics.Bitmap
+import java.util.Locale
 
 /**
  * 视口检测抽象（vision-core 模块接口）。
@@ -49,7 +50,9 @@ data class ViewportResult(
     override fun toString(): String = buildString {
         append("Viewport[left=$left, top=$top, right=$right, bottom=$bottom, ")
         append("size=${width}x$height, ")
-        append("norm=(${String.format("%.3f", normLeft)},${String.format("%.3f", normTop)}," +
-                "${String.format("%.3f", normRight)},${String.format("%.3f", normBottom)})]")
+        append("norm=(${String.format(Locale.US, "%.3f", normLeft)}," +
+                "${String.format(Locale.US, "%.3f", normTop)}," +
+                "${String.format(Locale.US, "%.3f", normRight)}," +
+                "${String.format(Locale.US, "%.3f", normBottom)})]")
     }
 }

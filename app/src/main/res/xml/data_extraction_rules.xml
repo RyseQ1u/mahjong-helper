@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    备份 / 迁移排除规则（Android 12+ 使用；低版本由 allowBackup="false" 兜底）。
+
+    本应用把用户主动保存的整帧截图存放在 filesDir/debug/frames，
+    局历史与调试样本元数据存放在 Room 数据库。这些内容一旦进入云备份或换机迁移，
+    就违背了「不上传任何屏幕/牌局数据」的承诺，因此全量排除。
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>
