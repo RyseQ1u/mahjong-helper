@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">微乐柳州麻将助手</string>
+    <string name="notification_channel_id">capture_channel</string>
+    <string name="notification_channel_name">屏幕采集</string>
+    <string name="notification_capture_title">正在采集屏幕</string>
+    <string name="notification_capture_text">点击可停止采集</string>
+</resources>
