@@ -70,6 +70,11 @@ class FloatingOverlay(
     @SuppressLint("InflateParams", "ClickableViewAccessibility")
     override fun show(initialStatus: String) {
         onMain {
+            // 折叠态下先移除圆点窗口，避免与卡片窗口重复挂窗。
+            collapsedView?.let {
+                windowManager.removeView(it)
+                collapsedView = null
+            }
             if (cardView != null) {
                 updateStatus(initialStatus)
                 return@onMain
@@ -127,8 +132,21 @@ class FloatingOverlay(
      */
     override fun setVisible(visible: Boolean) {
         onMain {
-            val view = cardView ?: collapsedView ?: return@onMain
-            val params = cardParams ?: collapsedParams ?: return@onMain
+            // view 与 params 必须配对：卡片态用 cardView/cardParams，折叠态用 collapsedView/collapsedParams，
+            // 否则折叠态会拿 cardParams 去更新 collapsedView，导致窗口属性错配。
+            val view: View
+            val params: WindowManager.LayoutParams
+            when {
+                cardView != null -> {
+                    view = cardView!!
+                    params = cardParams!!
+                }
+                collapsedView != null -> {
+                    view = collapsedView!!
+                    params = collapsedParams!!
+                }
+                else -> return@onMain
+            }
             // 不在窗口树中（尚未显示或已 dismiss）时不做任何事，避免自掩码把已关闭的窗口重新挂上。
             if (view.parent == null) return@onMain
 

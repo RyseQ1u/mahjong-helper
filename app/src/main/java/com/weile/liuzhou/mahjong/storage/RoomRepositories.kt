@@ -79,7 +79,13 @@ object StorageModule {
                 context.applicationContext,
                 AppDatabase::class.java,
                 AppDatabase.NAME,
-            ).fallbackToDestructiveMigration().build().also { db = it }
+            )
+                // ⚠️ 破坏性迁移：schema 版本升级会清空旧数据（设置/局历史/样本元数据）。
+                // 当前均为本地调试数据，可接受；一旦有用户必须保留的数据，
+                // 必须改为显式 Migration（Room .addMigrations(...)）并递增 version，
+                // 禁止继续用 fallbackToDestructiveMigration 静默丢数据。
+                .fallbackToDestructiveMigration()
+                .build().also { db = it }
         }
 
     fun settings(context: Context): SettingsRepository =
