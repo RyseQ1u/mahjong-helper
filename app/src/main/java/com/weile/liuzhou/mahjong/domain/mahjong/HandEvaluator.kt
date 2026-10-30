@@ -63,74 +63,74 @@ object HandEvaluator {
 
     /** 标准形（4 面子 + 1 将）向听。 */
     private fun shantenStandard(c: IntArray, melds: Int): Int {
+        val slots = (4 - melds).coerceAtLeast(0)
         var best = MAX_SHANTEN
-        // 枚举将
+        // 枚举将（对子）：将不占面子槽，补齐后缺口为 0。
         for (i in 0..Tile.MAX_CODE) {
             if (c[i] >= 2) {
                 c[i] -= 2
-                best = minOf(best, mentsuShanten(c, melds, pairFound = true))
+                best = minOf(best, mentsuDraws(c, slots) - 1)
                 c[i] += 2
             }
         }
-        // 无将（浮将）路径
-        best = minOf(best, mentsuShanten(c, melds, pairFound = false))
+        // 无将（单钓 tanki）：取一张孤张作「将位」，需再补 1 张成对。
+        // 单钓的 1 张缺口与向听归一化 (-1) 相抵，故直接取 mentsuDraws。
+        for (i in 0..Tile.MAX_CODE) {
+            if (c[i] >= 1) {
+                c[i] -= 1
+                best = minOf(best, mentsuDraws(c, slots))
+                c[i] += 1
+            }
+        }
         return best
     }
 
     /**
-     * 标准形递归：从最小的非零牌开始分解。
-     * @param pairFound 是否已选定将
+     * 返回「凑齐 [slots] 个面子所需的最少摸牌数」：
+     * 完整面子 0、搭子 1、孤张 2。已无牌但仍有空槽时按空槽数 ×2 兜底。
      */
-    private fun mentsuShanten(c: IntArray, melds: Int, pairFound: Boolean): Int {
+    private fun mentsuDraws(c: IntArray, slots: Int): Int {
+        if (slots <= 0) return 0
         var i = 0
         while (i <= Tile.MAX_CODE && c[i] == 0) i++
-        if (i > Tile.MAX_CODE) {
-            // 全部分解完：有将则 -1（和牌），无将则差一个将 = 0
-            return if (pairFound) -1 else 0
-        }
+        if (i > Tile.MAX_CODE) return slots * 2
         val isNumber = i < Tile.HONOR_START
         val rank = i % 9
-        var best = MAX_SHANTEN
+        var best = Int.MAX_VALUE
 
-        // 刻子（三张相同直接成面子）
+        // 刻子（完整面子，0 张）
         if (c[i] >= 3) {
             c[i] -= 3
-            best = minOf(best, mentsuShanten(c, melds + 1, pairFound))
+            best = minOf(best, mentsuDraws(c, slots - 1))
             c[i] += 3
         }
-        // 顺子（三张连续直接成面子）
+        // 顺子（完整面子，0 张）
         if (isNumber && rank <= 6 && c[i + 1] > 0 && c[i + 2] > 0) {
             c[i]--; c[i + 1]--; c[i + 2]--
-            best = minOf(best, mentsuShanten(c, melds + 1, pairFound))
+            best = minOf(best, mentsuDraws(c, slots - 1))
             c[i]++; c[i + 1]++; c[i + 2]++
         }
-        // 对子当将（仅未选将时免费）
-        if (c[i] >= 2 && !pairFound) {
-            c[i] -= 2
-            best = minOf(best, mentsuShanten(c, melds, pairFound = true))
-            c[i] += 2
-        }
-        // 对子做半刻（差一张成刻子，+1）
+        // 对子做搭子（差一张成刻，1 张）
         if (c[i] >= 2) {
             c[i] -= 2
-            best = minOf(best, mentsuShanten(c, melds, pairFound) + 1)
+            best = minOf(best, 1 + mentsuDraws(c, slots - 1))
             c[i] += 2
         }
-        // 两面搭子 12（差一张成顺，+1）
+        // 两面搭子（差一张成顺，1 张）
         if (isNumber && rank <= 7 && c[i + 1] > 0) {
             c[i]--; c[i + 1]--
-            best = minOf(best, mentsuShanten(c, melds, pairFound) + 1)
+            best = minOf(best, 1 + mentsuDraws(c, slots - 1))
             c[i]++; c[i + 1]++
         }
-        // 嵌张搭子 13（差一张成顺，+1）
+        // 嵌张搭子（差一张成顺，1 张）
         if (isNumber && rank <= 6 && c[i + 2] > 0) {
             c[i]--; c[i + 2]--
-            best = minOf(best, mentsuShanten(c, melds, pairFound) + 1)
+            best = minOf(best, 1 + mentsuDraws(c, slots - 1))
             c[i]++; c[i + 2]++
         }
-        // 单张浮张（+1）
+        // 孤张（差两张成面子，2 张）
         c[i]--
-        best = minOf(best, mentsuShanten(c, melds, pairFound) + 1)
+        best = minOf(best, 2 + mentsuDraws(c, slots - 1))
         c[i]++
 
         return best
@@ -155,18 +155,43 @@ object HandEvaluator {
      */
     fun canWin(counts: TileCounts, melds: Int = 0): Boolean {
         val c = counts.counts.copyOf()
-        // 七对
+        // 七对（14 张，无副露）
         if (counts.total == 14 && shantenChiitoi(c) == -1) return true
-        // 标准形：枚举将
+        // 标准形：枚举将，剩余牌须恰好拆成 (4-melds) 个完整面子
+        val slots = (4 - melds).coerceAtLeast(0)
         for (i in 0..Tile.MAX_CODE) {
             if (c[i] >= 2) {
                 c[i] -= 2
-                if (mentsuShanten(c, melds, pairFound = true) == -1) {
+                if (canFormAllSets(c, slots)) {
                     c[i] += 2
                     return true
                 }
                 c[i] += 2
             }
+        }
+        return false
+    }
+
+    /** 剩余牌能否恰好拆成 [slots] 个完整面子（每张牌都用尽）。 */
+    private fun canFormAllSets(c: IntArray, slots: Int): Boolean {
+        if (slots == 0) {
+            for (i in 0..Tile.MAX_CODE) if (c[i] != 0) return false
+            return true
+        }
+        var i = 0
+        while (i <= Tile.MAX_CODE && c[i] == 0) i++
+        if (i > Tile.MAX_CODE) return false
+        val isNumber = i < Tile.HONOR_START
+        val rank = i % 9
+        if (c[i] >= 3) {
+            c[i] -= 3
+            if (canFormAllSets(c, slots - 1)) { c[i] += 3; return true }
+            c[i] += 3
+        }
+        if (isNumber && rank <= 6 && c[i + 1] > 0 && c[i + 2] > 0) {
+            c[i]--; c[i + 1]--; c[i + 2]--
+            if (canFormAllSets(c, slots - 1)) { c[i]++; c[i + 1]++; c[i + 2]++; return true }
+            c[i]++; c[i + 1]++; c[i + 2]++
         }
         return false
     }

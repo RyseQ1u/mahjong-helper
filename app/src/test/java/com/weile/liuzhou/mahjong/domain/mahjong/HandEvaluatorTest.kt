@@ -54,10 +54,11 @@ class HandEvaluatorTest {
     }
 
     @Test
-    fun `搭子加浮张一向听`() {
-        // 123m 456m 11s 23p 9p：2 顺 + 将 + 搭子 + 浮张
+    fun `搭子加浮张两向听`() {
+        // 123m 456m 11s 23p 9p：2 顺 + 将 + 搭子 + 孤张 = 11 张
+        // 搭子补 1 张成面子、孤张补 2 张成面子 → 共 3 张 = 2 向听
         val hand = TileCounts.parse("123m456m11s23p9p")
-        assertEquals(1, HandEvaluator.shanten(hand))
+        assertEquals(2, HandEvaluator.shanten(hand))
     }
 
     @Test
@@ -107,6 +108,32 @@ class HandEvaluatorTest {
         val hand = TileCounts.parse("456m789m111s55s")
         assertTrue(hand.validate(melds = 1) is TileCounts.ValidationResult.Ok)
         assertTrue(HandEvaluator.canWin(hand, melds = 1))
+    }
+
+    // ------------------------------------------------------------ 单钓与带副露向听
+
+    @Test
+    fun `单钓将向听为零`() {
+        // 4 面子 + 单张 5s（tanki），听 5s
+        val hand = TileCounts.parse("123m456m789m123p5s")
+        assertEquals(13, hand.total)
+        assertEquals(0, HandEvaluator.shanten(hand))
+        assertFalse(HandEvaluator.canWin(hand))
+    }
+
+    @Test
+    fun `带副露的向听`() {
+        // 3 面子 + 1 副露（=4 组）+ 1p9p 两张孤张 → 单钓听牌
+        val hand = TileCounts.parse("123m456m789m1p9p")
+        assertEquals(0, HandEvaluator.shanten(hand, melds = 1))
+    }
+
+    @Test
+    fun `带副露单钓进张`() {
+        val hand = TileCounts.parse("123m456m789m1p9p")
+        val draws = HandEvaluator.effectiveDraws(hand, melds = 1)
+        assertTrue(draws.contains(Tile.pinzu(1)))
+        assertTrue(draws.contains(Tile.pinzu(9)))
     }
 
     // ------------------------------------------------------------ 舍牌排序

@@ -95,6 +95,20 @@ class LiuzhouHandEvaluatorTest {
     }
 
     @Test
+    fun `全求人含加杠仍判全刻子`() {
+        val melds = listOf(
+            OpenMeld(MeldType.PON, List(3) { Tile.manzu(1) }, Seat.TOP),
+            OpenMeld(MeldType.PON, List(3) { Tile.manzu(3) }, Seat.TOP),
+            OpenMeld(MeldType.SHOUMINKAN, List(4) { Tile.manzu(5) }, Seat.TOP),
+            OpenMeld(MeldType.ANKAN, List(4) { Tile.manzu(7) }, Seat.TOP),
+        )
+        val e = LiuzhouHandEvaluator.evaluate(hand("9m"), melds, discardWin())
+        assertTrue(e.canWin)
+        assertEquals(LiuzhouPattern.QUANQIUREN, e.patterns.single())
+        assertEquals(LiuzhouPattern.ALL_TRIPLETS, e.quanqiurenBase)
+    }
+
+    @Test
     fun `门清标志来自上下文`() {
         val e = LiuzhouHandEvaluator.evaluate(
             hand("123m456p789s11s234s"), emptyList(), discardWin(concealed = true)

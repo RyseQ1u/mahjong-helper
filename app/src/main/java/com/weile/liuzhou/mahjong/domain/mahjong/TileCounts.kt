@@ -56,7 +56,7 @@ class TileCounts(val hasDragons: Boolean = true) {
      * @param melds 公开副露组数（吃/碰/杠）
      */
     fun validate(melds: Int = 0): ValidationResult {
-        if (hasDragons) {
+        if (!hasDragons) {
             for (code in Tile.DRAGON_START..Tile.MAX_CODE) {
                 if (counts[code] > 0) return ValidationResult.Invalid("牌集设置为无箭牌，但出现了箭牌 ${Tile(code).displayName}")
             }
@@ -113,6 +113,7 @@ class TileCounts(val hasDragons: Boolean = true) {
                         var j = i
                         while (j < spec.length && spec[j].isDigit()) j++
                         if (j == i) throw IllegalArgumentException("无法解析牌谱位置 $i: ${spec.substring(i)}")
+                        if (j >= spec.length) throw IllegalArgumentException("牌谱缺少花色后缀: ${spec.substring(i)}")
                         val suit = spec[j]
                         for (k in i until j) {
                             val tile = Tile.parse("${spec[k]}$suit")

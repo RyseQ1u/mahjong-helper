@@ -133,8 +133,14 @@ object LiuzhouHandEvaluator {
     /** 全求人的基础胡型：按副露推导（全刻→对对胡；同花色→清一色；否则基本胡）。 */
     private fun quanqiurenBase(melds: List<OpenMeld>): LiuzhouPattern {
         val meldTiles = melds.flatMap { it.tiles }
+        // 全刻子：碰/明杠/暗杠/补杠（加杠本质仍是刻子）。
         val allTriplets = meldTiles.isNotEmpty() &&
-            melds.all { it.type == com.weile.liuzhou.mahjong.domain.game.MeldType.PON || it.type == com.weile.liuzhou.mahjong.domain.game.MeldType.MINKAN || it.type == com.weile.liuzhou.mahjong.domain.game.MeldType.ANKAN }
+            melds.all {
+                it.type == com.weile.liuzhou.mahjong.domain.game.MeldType.PON ||
+                    it.type == com.weile.liuzhou.mahjong.domain.game.MeldType.MINKAN ||
+                    it.type == com.weile.liuzhou.mahjong.domain.game.MeldType.ANKAN ||
+                    it.type == com.weile.liuzhou.mahjong.domain.game.MeldType.SHOUMINKAN
+            }
         if (allTriplets) return LiuzhouPattern.ALL_TRIPLETS
         val pureOneSuit = meldTiles.isNotEmpty() &&
             meldTiles.none { it.isHonor } &&

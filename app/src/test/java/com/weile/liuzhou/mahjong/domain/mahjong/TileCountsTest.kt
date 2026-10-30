@@ -70,6 +70,35 @@ class TileCountsTest {
     }
 
     @Test
+    fun `允许箭牌时含箭牌手牌校验通过`() {
+        // 14 张含红中（1z）
+        val counts = TileCounts.parse("123m456p789s11s22s1z")
+        assertTrue(counts.validate() is TileCounts.ValidationResult.Ok)
+    }
+
+    @Test
+    fun `无箭牌牌集出现箭牌校验失败`() {
+        val counts = TileCounts(hasDragons = false)
+        // 直接改 counts 数组，绕过 add() 的 require 保护，验证 validate() 兜底
+        counts.counts[Tile.dragon(0).code] = 1
+        val result = counts.validate()
+        assertTrue(result is TileCounts.ValidationResult.Invalid)
+        assertTrue((result as TileCounts.ValidationResult.Invalid).reason.contains("箭牌"))
+    }
+
+    @Test
+    fun `牌谱缺少花色后缀抛异常`() {
+        var threw = false
+        try {
+            TileCounts.parse("123m456")
+        } catch (e: IllegalArgumentException) {
+            threw = true
+            assertTrue(e.message!!.contains("花色"))
+        }
+        assertTrue(threw)
+    }
+
+    @Test
     fun `拷贝独立`() {
         val a = TileCounts.parse("123m456p789s11s22s")
         val b = a.copy()
