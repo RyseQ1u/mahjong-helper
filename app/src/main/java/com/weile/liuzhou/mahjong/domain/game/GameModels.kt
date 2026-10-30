@@ -94,9 +94,12 @@ enum class MeldType {
             SHOUMINKAN -> 1
         }
 
-    /** 是否从他人弃牌触发（暗杠否）。 */
+    /** 是否从他人弃牌触发（吃/碰/明杠为真；暗杠、加杠为假）。 */
     val fromDiscard: Boolean
-        get() = this != ANKAN
+        get() = when (this) {
+            CHI, PON, MINKAN -> true
+            ANKAN, SHOUMINKAN -> false
+        }
 }
 
 /** 公开副露。 */

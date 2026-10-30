@@ -245,6 +245,19 @@ class GameStateMachineTest {
     }
 
     @Test
+    fun `人工修正手牌后刷新张数`() {
+        val m = DefaultGameStateMachine()
+        m.observe(obs(ownHand = hand13()))
+        assertEquals(13, m.snapshot().handCounts[Seat.SELF])
+
+        // 修正为 14 张（摸牌后），守恒合法；handCounts[SELF] 应同步刷新
+        val fourteen = hand13() + Tile.souzu(9)
+        assertTrue(m.correctOwnHand(fourteen.sorted()))
+        assertEquals(14, m.snapshot().ownHand.size)
+        assertEquals(14, m.snapshot().handCounts[Seat.SELF])
+    }
+
+    @Test
     fun `动画与未知阶段冻结`() {
         val m = DefaultGameStateMachine()
         m.observe(obs(ownHand = hand13()))
@@ -354,5 +367,15 @@ class GameStateMachineTest {
         assertTrue(events.none { it is GameEvent.Discarded })
         assertTrue(m.snapshot().ownHand.none { it == Tile.manzu(1) })
         assertEquals(1, m.snapshot().meldsOf(Seat.SELF).size)
+    }
+
+    @Test
+    fun `加杠不从弃牌触发`() {
+        // 吃/碰/明杠来自他人弃牌；暗杠、加杠（补杠）不来自弃牌。
+        assertTrue(MeldType.CHI.fromDiscard)
+        assertTrue(MeldType.PON.fromDiscard)
+        assertTrue(MeldType.MINKAN.fromDiscard)
+        assertFalse(MeldType.ANKAN.fromDiscard)
+        assertFalse(MeldType.SHOUMINKAN.fromDiscard)
     }
 }

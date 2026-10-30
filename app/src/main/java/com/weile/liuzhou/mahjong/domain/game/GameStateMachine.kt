@@ -197,6 +197,7 @@ class DefaultGameStateMachine : GameStateMachine {
         val violations = TileLedger(candidate).violations()
         return if (violations.isEmpty()) {
             state = candidate.copy(needConfirmation = false, confirmationReason = null)
+            refreshHandCounts()
             awaitingConfirmation = false
             lastReliable = state
             true
