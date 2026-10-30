@@ -58,7 +58,12 @@ class ScreenRecognizer(
         val tiles = mutableListOf<TileMatch>()
         for ((region, source) in regions) {
             for (cell in region.cells(viewport)) {
-                val accessor = SubRegionPixelAccessor(screen, cell)
+                // 左右弃牌区牌面旋转 ±90°，匹配前按 rotationDeg 旋转回正向。
+                val accessor = if (region.rotationDeg % 360 == 0) {
+                    SubRegionPixelAccessor(screen, cell)
+                } else {
+                    RotatedSubRegionPixelAccessor(screen, cell, region.rotationDeg)
+                }
                 val match = tileMatcher.match(accessor, cell, minConfidence, topN = 1).firstOrNull()
                     ?: TileMatch.unknown(cell)
                 tiles += match.copy(source = source)

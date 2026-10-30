@@ -53,19 +53,23 @@ data class LayoutRegion(
         return TileRegion(left, top, right, bottom)
     }
 
-    /** 将区域等分为 expectedTiles 个单牌格子（按阅读顺序）。 */
+    /** 将区域等分为 expectedTiles 个单牌格子（按阅读顺序）。末格覆盖到边界，避免整除余数丢像素。 */
     fun cells(viewport: ViewportResult): List<TileRegion> {
         val abs = toAbsolute(viewport)
         val n = expectedTiles.coerceAtLeast(1)
         return if (horizontal) {
             val cw = abs.width / n
             (0 until n).map { i ->
-                TileRegion(abs.left + i * cw, abs.top, abs.left + (i + 1) * cw, abs.bottom)
+                val left = abs.left + i * cw
+                val right = if (i == n - 1) abs.right else left + cw
+                TileRegion(left, abs.top, right, abs.bottom)
             }
         } else {
             val ch = abs.height / n
             (0 until n).map { i ->
-                TileRegion(abs.left, abs.top + i * ch, abs.right, abs.top + (i + 1) * ch)
+                val top = abs.top + i * ch
+                val bottom = if (i == n - 1) abs.bottom else top + ch
+                TileRegion(abs.left, top, abs.right, bottom)
             }
         }
     }

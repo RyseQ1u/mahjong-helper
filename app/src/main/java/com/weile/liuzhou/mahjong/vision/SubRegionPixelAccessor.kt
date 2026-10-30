@@ -17,6 +17,8 @@ class SubRegionPixelAccessor(
 
     override fun luminance(x: Int, y: Int): Int {
         if (width <= 0 || height <= 0) return 0
+        // 父画面尺寸为 0 时保护，避免 coerceIn 上界 -1 越界。
+        if (parent.width <= 0 || parent.height <= 0) return 0
         val px = (bounds.left + x).coerceIn(0, parent.width - 1)
         val py = (bounds.top + y).coerceIn(0, parent.height - 1)
         return parent.luminance(px, py)

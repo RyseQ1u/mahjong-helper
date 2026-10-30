@@ -23,6 +23,19 @@ class NccTileTemplateMatcher(
     val library: TileTemplateLibrary,
 ) : TileTemplateMatcher {
 
+    /** 模板的均值与范数（构造时一次算出，避免每帧每格重复统计）。 */
+    private data class TemplateStats(val mean: Double, val norm: Double)
+
+    private val templateStats: Map<Tile, TemplateStats> = library.templates.mapValues { (_, t) ->
+        val mean = t.pixels.average()
+        var sq = 0.0
+        for (v in t.pixels) {
+            val d = v - mean
+            sq += d * d
+        }
+        TemplateStats(mean, sqrt(sq))
+    }
+
     override fun match(
         region: PixelAccessor,
         bounds: TileRegion,
@@ -69,19 +82,18 @@ class NccTileTemplateMatcher(
         // 平坦区域（纯黑/纯白）没有可区分特征，直接 0 分
         if (rNorm < FLAT_EPSILON) return 0f
 
-        val tMean = template.pixels.average()
+        // 模板均值/范数已预计算，避免重复遍历模板像素。
+        val stats = templateStats.getValue(template.tile)
+        if (stats.norm < FLAT_EPSILON) return 0f
+
         var dot = 0.0
-        var tSq = 0.0
         for (i in template.pixels.indices) {
             val rd = regionSamples[i] - rMean
-            val td = template.pixels[i] - tMean
+            val td = template.pixels[i] - stats.mean
             dot += rd * td
-            tSq += td * td
         }
-        val tNorm = sqrt(tSq)
-        if (tNorm < FLAT_EPSILON) return 0f
 
-        return (dot / (rNorm * tNorm)).coerceIn(-1.0, 1.0).toFloat()
+        return (dot / (rNorm * stats.norm)).coerceIn(-1.0, 1.0).toFloat()
     }
 
     /** 双线性-ish 最近邻重采样到目标尺寸，返回灰度数组。 */
