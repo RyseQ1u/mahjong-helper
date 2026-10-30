@@ -3,6 +3,8 @@ package com.weile.liuzhou.mahjong.domain.analysis
 import com.weile.liuzhou.mahjong.domain.game.DiscardRecord
 import com.weile.liuzhou.mahjong.domain.game.GamePhase
 import com.weile.liuzhou.mahjong.domain.game.GameState
+import com.weile.liuzhou.mahjong.domain.game.MeldType
+import com.weile.liuzhou.mahjong.domain.game.OpenMeld
 import com.weile.liuzhou.mahjong.domain.game.Seat
 import com.weile.liuzhou.mahjong.domain.mahjong.Tile
 import com.weile.liuzhou.mahjong.domain.mahjong.TileCounts
@@ -117,6 +119,22 @@ class RecommendationEngineTest {
         val advice = engine.advise(state, AnalysisMode.BALANCED, hasDragons = false)
         assertTrue(advice.waitingConfirmation)
         assertTrue(advice.confirmationHint!!.contains("箭牌开关"))
+    }
+
+    @Test
+    fun `决策只按自家副露计算`() {
+        // 自家 1 副露 + 手牌 3 面子 + 将 = 和牌；若误用全场副露总数（3）则无法和牌。
+        val state = GameState(
+            phase = GamePhase.OWN_TURN,
+            ownHand = hand("456m789m111s55s"),
+            melds = mapOf(
+                Seat.SELF to listOf(OpenMeld(MeldType.PON, List(3) { Tile.manzu(1) }, Seat.TOP)),
+                Seat.TOP to listOf(OpenMeld(MeldType.PON, List(3) { Tile.pinzu(2) }, Seat.LEFT)),
+                Seat.LEFT to listOf(OpenMeld(MeldType.PON, List(3) { Tile.pinzu(3) }, Seat.TOP)),
+            ),
+        )
+        val advice = engine.advise(state, AnalysisMode.BALANCED)
+        assertTrue(advice.canWin)
     }
 
     @Test

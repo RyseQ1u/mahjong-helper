@@ -2,6 +2,7 @@ package com.weile.liuzhou.mahjong.domain.analysis
 
 import com.weile.liuzhou.mahjong.domain.game.GamePhase
 import com.weile.liuzhou.mahjong.domain.game.GameState
+import com.weile.liuzhou.mahjong.domain.game.Seat
 import com.weile.liuzhou.mahjong.domain.game.TileLedger
 import com.weile.liuzhou.mahjong.domain.mahjong.HandEvaluator
 import com.weile.liuzhou.mahjong.domain.mahjong.Tile
@@ -127,7 +128,8 @@ class DefaultRecommendationEngine : RecommendationEngine {
         }
 
         val known = state.ownHand.filterNotNull()
-        val melds = state.totalMelds
+        // 决策只应参考「自家」已形成的副露组数，而非全场四家副露总数。
+        val melds = state.meldsOf(Seat.SELF).size
 
         // 4) 牌集校验 + 已和牌（自摸）
         val counts = buildCounts(known, hasDragons)
