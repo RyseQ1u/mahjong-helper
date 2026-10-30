@@ -105,16 +105,22 @@ class ActionLedger {
 
     /**
      * 最后一张判定：和牌是否为牌墙最后一张摸牌。
-     * 仅在「和牌事件紧邻摸牌事件且此前无未结算弃牌」时返回 true/false，
-     * 否则返回 null（无法可靠判定 —— 方案 2.2 要求可靠判定才能用海底捞月）。
+     * - true：和牌紧邻自家摸牌（自摸），可靠判定为海底捞月候选；
+     * - false：和牌紧邻他家弃牌（点炮），可靠判定非海底；
+     * - null：无法可靠判定（信息不足）。
      */
     fun isLastTileWinReliable(): Boolean? {
         val win = lastWin() ?: return null
+        // 点炮：和牌紧邻他家弃牌 → 非海底。
+        val prev = events.lastOrNull { it.seq == win.seq - 1 }
+        if (prev != null && prev.type == LedgerEventType.DISCARD && prev.seat != win.seat) {
+            return false
+        }
+        // 自摸：和牌紧邻自家摸牌 → 海底候选。
         val draw = lastDraw() ?: return null
-        // 和牌必须是自摸且摸牌紧邻其前
-        if (draw.seq + 1 != win.seq || draw.seat != win.seat) return null
-        // 摸牌之后不能还有别的事件（保险）
-        if (events.any { it.seq > draw.seq && it.seq < win.seq }) return null
-        return true
+        if (draw.seq + 1 == win.seq && draw.seat == win.seat) {
+            return true
+        }
+        return null
     }
 }

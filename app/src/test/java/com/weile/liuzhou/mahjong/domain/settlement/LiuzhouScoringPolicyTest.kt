@@ -90,13 +90,49 @@ class LiuzhouScoringPolicyTest {
     }
 
     @Test
-    fun `杠上花与海底捞月倍率确认`() {
+    fun `抢杠基本胡点炮单条确定行`() {
+        val lines = policy.scoreWin(
+            eval("123m456p789s11s234s", robbingKan = true), Seat.SELF, discarder = Seat.TOP
+        )
+        // 1 × 2 = 2，只有一条确定胡牌分行（不再叠加 +2 行）
+        val confirmed = lines.filter { it.component == ScoreComponent.HU_POINTS && it.points != null }
+        assertEquals(1, confirmed.size)
+        assertEquals(2, confirmed.first().points)
+        assertEquals(Seat.TOP, confirmed.first().payer)
+    }
+
+    @Test
+    fun `杠上花与海底捞月倍率叠加相乘`() {
         val lines = policy.scoreWin(
             eval("123m456p789s11s234s", selfDraw = true, afterKan = KanKind.ANKAN, isLastTile = true),
             Seat.SELF, discarder = null
         )
-        assertTrue(lines.any { it.label.contains("杠上花") && it.points == 2 })
-        assertTrue(lines.any { it.label.contains("海底捞月") && it.points == 2 })
+        // 基本胡自摸 1 × 杠上花 2 × 海底 2 = 4，单条确定行，无「+2 叠加」痕迹
+        val confirmed = lines.filter { it.component == ScoreComponent.HU_POINTS && it.points != null }
+        assertEquals(1, confirmed.size)
+        assertEquals(4, confirmed.first().points)
+        assertTrue(confirmed.first().label.contains("杠上花"))
+        assertTrue(confirmed.first().label.contains("海底捞月"))
+    }
+
+    @Test
+    fun `杠上花自摸倍率应用`() {
+        val lines = policy.scoreWin(
+            eval("123m456p789s11s234s", selfDraw = true, afterKan = KanKind.ANKAN),
+            Seat.SELF, discarder = null
+        )
+        val confirmed = lines.filter { it.component == ScoreComponent.HU_POINTS && it.points != null }
+        assertEquals(1, confirmed.size)
+        assertEquals(2, confirmed.first().points)
+    }
+
+    @Test
+    fun `抢杠叠加大番型暂不支持`() {
+        val lines = policy.scoreWin(
+            eval("111m222p333s444s55s", robbingKan = true), Seat.SELF, discarder = Seat.TOP
+        )
+        assertTrue(lines.none { it.component == ScoreComponent.HU_POINTS && it.points != null })
+        assertTrue(lines.any { it.points == null && it.label.contains("抢杠") })
     }
 
     // -------------------------------------------------- 暂不支持分支

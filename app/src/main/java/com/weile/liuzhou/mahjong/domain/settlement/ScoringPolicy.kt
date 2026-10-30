@@ -4,6 +4,7 @@ import com.weile.liuzhou.mahjong.domain.game.Seat
 import com.weile.liuzhou.mahjong.domain.rules.KanKind
 import com.weile.liuzhou.mahjong.domain.rules.LiuzhouEvaluation
 import com.weile.liuzhou.mahjong.domain.rules.LiuzhouPattern
+import com.weile.liuzhou.mahjong.domain.rules.WinContext
 
 /**
  * 计分策略（ScoringPolicy，P5）。
@@ -108,50 +109,33 @@ class LiuzhouScoringPolicy : ScoringPolicy {
         val ctx = evaluation.context
         val lines = mutableListOf<ScoreLine>()
 
-        // ---- 基础牌型分（仅点炮情形的确定值；自摸涉及每家上限冲突）----
-        val basePoints = basePointsFor(evaluation)
-        if (basePoints == null) {
+        val base = basePointsFor(evaluation)
+        val pattern = patternName(evaluation)
+
+        // 倍率：抢杠 ×2、杠上花 ×2、海底捞月 ×2（可叠加相乘）。
+        var multiplier = 1
+        // 整体胡牌分是否可确定；任一未确认项置 false 后不产出「基础分 × 倍率」确定行。
+        var winConfirmed = true
+
+        // 1) 基础胡型分
+        if (base == null) {
+            winConfirmed = false
             lines += ScoreLine.unsupported(
                 ScoreComponent.HU_POINTS,
-                "胡型基础分（${patternName(evaluation)}）",
+                "胡型基础分（${pattern}）",
                 unsupportedBaseReason(evaluation),
                 payer = discarder,
             )
-        } else if (ctx.selfDraw) {
-            // 自摸：仅基本胡每家 1 为确认值；其他牌型自摸涉及「每家 2 分上限」冲突
-            if (basePoints == 1 && evaluation.patterns.none {
-                    it == LiuzhouPattern.ALL_TRIPLETS ||
-                        it == LiuzhouPattern.PURE_ONE_SUIT ||
-                        it == LiuzhouPattern.SEVEN_PAIRS
-                }
-            ) {
-                lines += ScoreLine.confirmed(ScoreComponent.HU_POINTS, "基本胡自摸每家 1", 1)
-            } else {
-                lines += ScoreLine.unsupported(
-                    ScoreComponent.HU_POINTS,
-                    "${patternName(evaluation)}自摸每家付",
-                    "与 2.3「自摸霹雳每家最多 2 分」上限冲突，需房间算例核实",
-                )
-            }
-        } else {
-            lines += ScoreLine.confirmed(
-                ScoreComponent.HU_POINTS,
-                "${patternName(evaluation)}点炮",
-                basePoints,
-                payer = discarder,
-            )
-        }
-
-        // ---- 门清（仅自摸可计；分值/番数关系未确认）----
-        if (ctx.concealed && ctx.selfDraw) {
+        } else if (ctx.selfDraw && base != 1) {
+            winConfirmed = false
             lines += ScoreLine.unsupported(
                 ScoreComponent.HU_POINTS,
-                "门清",
-                "2.3：门清 2 分与额外 1 番的口径、及与每家 2 分上限的先后关系未确认",
+                "${pattern}自摸每家付",
+                "与 2.3「自摸霹雳每家最多 2 分」上限冲突，需房间算例核实",
             )
         }
 
-        // ---- 抢杠：基本胡 ×2（确认）；与其他番型叠加未确认 ----
+        // 2) 抢杠（×2，仅基本胡点炮确认）
         if (ctx.robbingKan) {
             val simple = evaluation.patterns.none {
                 it == LiuzhouPattern.ALL_TRIPLETS ||
@@ -159,9 +143,10 @@ class LiuzhouScoringPolicy : ScoringPolicy {
                     it == LiuzhouPattern.SEVEN_PAIRS ||
                     it == LiuzhouPattern.QUANQIUREN
             }
-            if (simple && !ctx.selfDraw) {
-                lines += ScoreLine.confirmed(ScoreComponent.HU_POINTS, "抢杠 基本胡×2", 2, payer = discarder)
+            if (simple && !ctx.selfDraw && base == 1) {
+                multiplier *= 2
             } else {
+                winConfirmed = false
                 lines += ScoreLine.unsupported(
                     ScoreComponent.HU_POINTS,
                     "抢杠与其他番型叠加",
@@ -171,21 +156,33 @@ class LiuzhouScoringPolicy : ScoringPolicy {
             }
         }
 
-        // ---- 杠上花 ×2（倍率确认；直杠补杠的支付人差异未确认）----
+        // 3) 杠上花（自摸，×2）/ 杠上炮（点炮，+3 歧义）
         ctx.afterKan?.let { kan ->
-            if (kan == KanKind.SHOUMINKAN) {
+            if (ctx.selfDraw) {
+                if (kan == KanKind.SHOUMINKAN) {
+                    winConfirmed = false
+                    lines += ScoreLine.unsupported(
+                        ScoreComponent.HU_POINTS,
+                        "杠上花（补杠）支付人",
+                        "2.3：补杠后和牌的支付人与抢杠关系待核实（×2 倍率本身已确认）",
+                    )
+                } else {
+                    multiplier *= 2
+                }
+            } else {
+                winConfirmed = false
                 lines += ScoreLine.unsupported(
                     ScoreComponent.HU_POINTS,
-                    "杠上花（补杠）支付人",
-                    "2.3：补杠后和牌的支付人与抢杠关系待核实（×2 倍率本身已确认）",
+                    "杠上炮",
+                    "2.3：「+3」是覆盖基本胡分还是叠加，需算例核实",
+                    payer = discarder,
                 )
             }
-            lines += ScoreLine.confirmed(ScoreComponent.HU_POINTS, "杠上花 ×2（倍率）", 2)
         }
 
-        // ---- 海底捞月 ×2（需可靠最后一张判定）----
+        // 4) 海底捞月（×2；无法可靠判定则单独标注，不影响基础胡牌分）
         when (ctx.isLastTile) {
-            true -> lines += ScoreLine.confirmed(ScoreComponent.HU_POINTS, "海底捞月 ×2（倍率）", 2)
+            true -> multiplier *= 2
             false -> Unit
             null -> lines += ScoreLine.unsupported(
                 ScoreComponent.HU_POINTS,
@@ -194,13 +191,22 @@ class LiuzhouScoringPolicy : ScoringPolicy {
             )
         }
 
-        // ---- 杠上炮（+3 覆盖/叠加歧义，一律暂不支持）----
-        if (ctx.afterKan != null && !ctx.selfDraw) {
+        // 5) 门清（独立加分项，仅自摸可计；口径未确认，不影响基础胡牌分）
+        if (ctx.concealed && ctx.selfDraw) {
             lines += ScoreLine.unsupported(
                 ScoreComponent.HU_POINTS,
-                "杠上炮",
-                "2.3：「+3」是覆盖基本胡分还是叠加，需算例核实",
-                payer = discarder,
+                "门清",
+                "2.3：门清 2 分与额外 1 番的口径、及与每家 2 分上限的先后关系未确认",
+            )
+        }
+
+        // 6) 输出「基础分 × 倍率」确定行（替代多条加法行）
+        if (base != null && winConfirmed) {
+            lines += ScoreLine.confirmed(
+                ScoreComponent.HU_POINTS,
+                winLabel(pattern, ctx, multiplier),
+                base * multiplier,
+                payer = if (ctx.selfDraw) null else discarder,
             )
         }
 
@@ -277,5 +283,16 @@ class LiuzhouScoringPolicy : ScoringPolicy {
         e.patterns.contains(LiuzhouPattern.PURE_ONE_SUIT) -> "清一色"
         e.patterns.contains(LiuzhouPattern.ALL_TRIPLETS) -> "对对胡"
         else -> "基本胡"
+    }
+
+    /** 组装确定行的标签：基础胡型 + 生效倍率。 */
+    private fun winLabel(pattern: String, ctx: WinContext, multiplier: Int): String {
+        val mods = buildList {
+            if (ctx.robbingKan) add("抢杠")
+            if (ctx.afterKan != null && ctx.selfDraw) add("杠上花")
+            if (ctx.isLastTile == true) add("海底捞月")
+        }
+        val base = if (ctx.selfDraw) "${pattern}自摸每家付" else "${pattern}点炮"
+        return if (mods.isEmpty()) base else "$base ${mods.joinToString(" ")}×$multiplier"
     }
 }

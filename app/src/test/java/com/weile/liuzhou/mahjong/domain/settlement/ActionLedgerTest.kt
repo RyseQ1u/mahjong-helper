@@ -52,25 +52,30 @@ class ActionLedgerTest {
 
     @Test
     fun `最后一张判定可靠与不可靠`() {
-        // 可靠：摸牌紧邻和牌
+        // 可靠：自摸紧邻和牌 → true
         val ok = ActionLedger()
         ok.record(LedgerEventType.DISCARD, Seat.TOP, Tile.manzu(1))
         ok.record(LedgerEventType.DRAW, Seat.SELF, Tile.manzu(9))
         ok.record(LedgerEventType.WIN, Seat.SELF, Tile.manzu(9))
         assertEquals(true, ok.isLastTileWinReliable())
 
-        // 不可靠：和牌前没有摸牌（点炮）
-        val noDraw = ActionLedger()
-        noDraw.record(LedgerEventType.DISCARD, Seat.TOP, Tile.manzu(1))
-        noDraw.record(LedgerEventType.WIN, Seat.SELF, Tile.manzu(1))
-        assertNull(noDraw.isLastTileWinReliable())
+        // 点炮：和牌紧邻他家弃牌 → false（非海底）
+        val ron = ActionLedger()
+        ron.record(LedgerEventType.DISCARD, Seat.TOP, Tile.manzu(1))
+        ron.record(LedgerEventType.WIN, Seat.SELF, Tile.manzu(1))
+        assertEquals(false, ron.isLastTileWinReliable())
 
-        // 不可靠：摸牌与和牌不相邻（中间有别的事件）
+        // 摸牌与和牌不相邻（中间有他家弃牌）→ false（非自摸海底）
         val gap = ActionLedger()
         gap.record(LedgerEventType.DRAW, Seat.SELF, Tile.manzu(9))
         gap.record(LedgerEventType.DISCARD, Seat.LEFT, Tile.manzu(2))
         gap.record(LedgerEventType.WIN, Seat.SELF, Tile.manzu(9))
-        assertNull(gap.isLastTileWinReliable())
+        assertEquals(false, gap.isLastTileWinReliable())
+
+        // 信息不足：仅有和牌事件 → null
+        val noInfo = ActionLedger()
+        noInfo.record(LedgerEventType.WIN, Seat.SELF, Tile.manzu(9))
+        assertNull(noInfo.isLastTileWinReliable())
     }
 
     @Test
